@@ -32064,8 +32064,9 @@ var CODE = 1,
     MACRO = 8,
     MACRO_ARGS = 9,
     MACRO_OBJ = 10,
-    SEPARATOR = 11,
-    NOTES_SEPARATOR = 12;
+    SLIDE_SEPARATOR = 11,
+    FRAGMENT_SEPARATOR = 12,
+    NOTES_SEPARATOR = 13;
 
 var regexByName = {
     CODE: /(?:^|\n\n)( {4}[^\n]+\n*)+/,
@@ -32074,11 +32075,12 @@ var regexByName = {
     FENCES: /(?:^|\n) *(`{3,}|~{3,}) *(?:\S+)? *\n(?:[\s\S]+?)\s*\4 *(?:\n+|$)/,
     DEF: /(?:^|\n) *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +["(]([^\n]+)[")])? *(?:\n+|$)/,
     MACRO: /!\[:([^\] ]+)([^\]]*)\](?:\(([^\)]*)\))?/,
-    SEPARATOR: /(?:^|\n)(---?)(?:\n|$)/,
+    SLIDE_SEPARATOR: /(?:^|\n)(---)(?:\n|$)/,
+    FRAGMENT_SEPARATOR: /(?:^|\n)(--)(?![^\n])/,
     NOTES_SEPARATOR: /(?:^|\n)(\?{3})(?:\n|$)/
   };
 
-var block = replace(/CODE|INLINE_CODE|CONTENT|FENCES|DEF|MACRO|SEPARATOR|NOTES_SEPARATOR/, regexByName),
+var block = replace(/CODE|INLINE_CODE|CONTENT|FENCES|DEF|MACRO|SLIDE_SEPARATOR|FRAGMENT_SEPARATOR|NOTES_SEPARATOR/, regexByName),
     inline = replace(/CODE|INLINE_CODE|CONTENT|FENCES|DEF|MACRO/, regexByName);
 
 function Lexer () { }
@@ -32144,10 +32146,10 @@ function lex (src, regex, tokens) {
         obj: cap[MACRO_OBJ]
       });
     }
-    else if (cap[SEPARATOR]) {
+    else if (cap[SLIDE_SEPARATOR] || cap[FRAGMENT_SEPARATOR]) {
       tokens.push({
         type: 'separator',
-        text: cap[SEPARATOR]
+        text: cap[SLIDE_SEPARATOR] || cap[FRAGMENT_SEPARATOR]
       });
     }
     else if (cap[NOTES_SEPARATOR]) {
@@ -32895,13 +32897,8 @@ Parser.prototype.parse = function (src, macros) {
         slides.push(stack[0]);
         stack = [createSlide()];
         // Tag the new slide as a continued slide if the separator
-        // used was -- instead of --- (2 vs. 3 dashes). Also insert a
-        // new line for the syntactically correct concatenation of
-        // the new slide to the previous slide.
-        if (token.text === '--') {
-          stack[0].properties.continued = 'true';
-          appendTo(stack[0], "\n");
-        }
+        // used was -- instead of --- (2 vs. 3 dashes).
+        stack[0].properties.continued = (token.text === '--').toString();
         break;
       case 'notes_separator':
         // Notes separator (???), so create empty content list on slide
@@ -34298,14 +34295,27 @@ describe('Lexer', function () {
     });
 
     it('should recognize normal separator', function () {
+      lexer.lex('\n---').should.eql([
+        {type: 'separator', text: '---'}
+      ]);
+    });
+
+    it('should not preserve trailing line breaks of normal separators', function () {
       lexer.lex('\n---\n').should.eql([
         {type: 'separator', text: '---'}
       ]);
     });
 
-    it('should recognize continued separators', function () {
+    it('should recognize continued separator', function () {
+      lexer.lex('\n--').should.eql([
+        {type: 'separator', text: '--'},
+      ]);
+    });
+
+    it('should preserve trailing line breaks of continued separators', function () {
       lexer.lex('\n--\n').should.eql([
-        {type: 'separator', text: '--'}
+        {type: 'separator', text: '--'},
+        {type: 'text', text: '\n'}
       ]);
     });
 
